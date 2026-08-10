@@ -1,0 +1,1396 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Absenteeism Report Generator</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- SheetJS for Excel Parsing -->
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+
+    <!-- html2pdf for Direct PDF Generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f4f7f9; /* Soft mockup background */
+        }
+        
+        .hero-bg {
+            background-color: #021124; /* Deep mockup navy */
+        }
+
+        .custom-checkbox {
+            appearance: none;
+            background-color: #fff;
+            margin: 0;
+            font: inherit;
+            color: currentColor;
+            width: 1.25em;
+            height: 1.25em;
+            border: 2px solid #cbd5e1;
+            border-radius: 0.25em;
+            display: grid;
+            place-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .custom-checkbox::before {
+            content: "";
+            width: 0.65em;
+            height: 0.65em;
+            transform: scale(0);
+            transition: 120ms transform ease-in-out;
+            box-shadow: inset 1em 1em white;
+            background-color: white;
+            transform-origin: center;
+            clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+        }
+
+        .custom-checkbox:checked {
+            background-color: #0f766e; 
+            border-color: #0f766e;
+        }
+
+        .custom-checkbox:checked::before {
+            transform: scale(1);
+        }
+
+        /* Mockup date input styling */
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            cursor: pointer;
+            opacity: 0.6;
+            transition: 0.2s;
+        }
+        input[type="date"]::-webkit-calendar-picker-indicator:hover {
+            opacity: 1;
+        }
+        
+        @media print {
+            body { background-color: white; }
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            .page-break { page-break-before: always; }
+            .print-container {
+                padding: 0 !important; margin: 0 !important;
+                box-shadow: none !important; width: 100% !important;
+                max-width: 100% !important; border: none !important;
+            }
+            @page { margin: 1.5cm; }
+        }
+        
+        .print-only { display: none; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        const IconUpload = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>;
+        const IconAlert = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>;
+        const IconCheck = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>;
+        const IconUser = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
+        const IconDashboard = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>;
+        const IconWarning = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>;
+        const IconPrint = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>;
+        const IconUsers = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>;
+        const IconCalendar = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>;
+        const IconCloudUpload = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className || "w-6 h-6"}><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="M8 17l4-4 4 4"/></svg>;
+        const IconInfo = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className || "w-4 h-4"}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>;
+        const IconStar = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className || "w-5 h-5"}><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>;
+
+        const getLocalYYYYMMDD = (dateObj) => {
+            if (!dateObj || isNaN(dateObj)) return null;
+            const yyyy = dateObj.getFullYear();
+            const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const dd = String(dateObj.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`;
+        };
+
+        const parseDateString = (dateStr) => {
+            if (dateStr == null || dateStr === '') return null;
+            if (dateStr instanceof Date) return new Date(dateStr.getFullYear(), dateStr.getMonth(), dateStr.getDate(), dateStr.getHours(), dateStr.getMinutes(), dateStr.getSeconds());
+            
+            if (typeof dateStr === 'number') {
+                const date = new Date(Math.round((dateStr - 25569) * 86400 * 1000));
+                return new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds());
+            }
+            
+            if (typeof dateStr === 'string') {
+                const s = dateStr.trim();
+                
+                // EXTRA PROTECTION: Tangkap format unik seperti "Jul 31, 2026, 8:59:22 PM"
+                const customMatch = s.match(/([a-zA-Z]+)\s+(\d{1,2}),\s+(\d{4}),\s+(\d{1,2}):(\d{2}):(\d{2})\s+(AM|PM)/i);
+                if (customMatch) {
+                    const monthStr = customMatch[1];
+                    const day = parseInt(customMatch[2], 10);
+                    const year = parseInt(customMatch[3], 10);
+                    let hour = parseInt(customMatch[4], 10);
+                    const min = parseInt(customMatch[5], 10);
+                    const sec = parseInt(customMatch[6], 10);
+                    const ampm = customMatch[7].toUpperCase();
+                    
+                    const months = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+                    const monthIdx = months[monthStr.substring(0,3).toLowerCase()];
+                    
+                    if (ampm === 'PM' && hour < 12) hour += 12;
+                    if (ampm === 'AM' && hour === 12) hour = 0;
+                    if (monthIdx !== undefined) return new Date(year, monthIdx, day, hour, min, sec);
+                }
+
+                // Tangkap format umum lainnya tanpa koma extra
+                const exactMatch = s.match(/([a-zA-Z]+)\s+(\d{1,2}),\s+(\d{4})(?:,\s*|\s+)(\d{1,2}):(\d{2}):(\d{2})\s+(AM|PM)/i);
+                if (exactMatch) {
+                    const monthStr = exactMatch[1];
+                    const day = parseInt(exactMatch[2], 10);
+                    const year = parseInt(exactMatch[3], 10);
+                    let hour = parseInt(exactMatch[4], 10);
+                    const min = parseInt(exactMatch[5], 10);
+                    const sec = parseInt(exactMatch[6], 10);
+                    const ampm = exactMatch[7].toUpperCase();
+                    
+                    const months = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+                    const monthIdx = months[monthStr.substring(0,3).toLowerCase()];
+                    
+                    if (ampm === 'PM' && hour < 12) hour += 12;
+                    if (ampm === 'AM' && hour === 12) hour = 0;
+                    if (monthIdx !== undefined) return new Date(year, monthIdx, day, hour, min, sec);
+                }
+
+                const parsed = new Date(s);
+                if (!isNaN(parsed)) return parsed;
+
+                const parts = s.split(' ')[0].split(/[\/\-]/);
+                if (parts.length === 3) {
+                     let d = parseInt(parts[0], 10);
+                     let m = parseInt(parts[1], 10) - 1;
+                     let y = parseInt(parts[2], 10);
+                     if (y < 100) y += 2000;
+                     if (!isNaN(d) && !isNaN(m) && !isNaN(y)) return new Date(y, m, d);
+                }
+            }
+            return null;
+        };
+
+        const parseTimeCell = (val, baseDateStr) => {
+            if (val == null || val === '') return null;
+            const baseDate = new Date(`${baseDateStr}T00:00:00`);
+            
+            if (typeof val === 'number') {
+                const fraction = val - Math.floor(val);
+                if (fraction > 0 || val < 1) { 
+                    const totalSeconds = Math.round(val * 24 * 3600);
+                    baseDate.setHours(Math.floor(totalSeconds / 3600), Math.floor((totalSeconds % 3600) / 60), 0, 0);
+                    return baseDate;
+                } else if (val >= 0 && val <= 24) { 
+                    baseDate.setHours(val, 0, 0, 0);
+                    return baseDate;
+                }
+            }
+            
+            if (typeof val === 'string') {
+                const s = val.trim().toLowerCase();
+                
+                const customMatch = s.match(/([a-zA-Z]+)\s+(\d{1,2}),\s+(\d{4}),\s+(\d{1,2}):(\d{2}):(\d{2})\s+(AM|PM)/i);
+                if (customMatch) {
+                    let hour = parseInt(customMatch[4], 10);
+                    const min = parseInt(customMatch[5], 10);
+                    const ampm = customMatch[7].toUpperCase();
+                    if (ampm === 'PM' && hour < 12) hour += 12;
+                    if (ampm === 'AM' && hour === 12) hour = 0;
+                    baseDate.setHours(hour, min, parseInt(customMatch[6],10), 0);
+                    return baseDate;
+                }
+
+                const exactMatch = s.match(/([a-zA-Z]+)\s+(\d{1,2}),\s+(\d{4})(?:,\s*|\s+)(\d{1,2}):(\d{2}):(\d{2})\s+(AM|PM)/i);
+                if (exactMatch) {
+                    let hour = parseInt(exactMatch[4], 10);
+                    const min = parseInt(exactMatch[5], 10);
+                    const ampm = exactMatch[7].toUpperCase();
+                    if (ampm === 'PM' && hour < 12) hour += 12;
+                    if (ampm === 'AM' && hour === 12) hour = 0;
+                    baseDate.setHours(hour, min, parseInt(exactMatch[6],10), 0);
+                    return baseDate;
+                }
+
+                const timeMatch = s.match(/\b(\d{1,2})[:\.](\d{2})(?::\d{2})?\s*(am|pm)?\b/);
+                if (timeMatch) {
+                    let hours = parseInt(timeMatch[1], 10);
+                    const mins = parseInt(timeMatch[2], 10);
+                    const ampm = timeMatch[3];
+                    if (ampm === 'pm' && hours < 12) hours += 12;
+                    if (ampm === 'am' && hours === 12) hours = 0;
+                    baseDate.setHours(hours, mins, 0, 0);
+                    return baseDate;
+                }
+                
+                const ampmMatch = s.match(/\b(\d{1,2})\s*(am|pm)\b/);
+                if (ampmMatch) {
+                    let hours = parseInt(ampmMatch[1], 10);
+                    const ampm = ampmMatch[2];
+                    if (ampm === 'pm' && hours < 12) hours += 12;
+                    if (ampm === 'am' && hours === 12) hours = 0;
+                    baseDate.setHours(hours, 0, 0, 0);
+                    return baseDate;
+                }
+            }
+            
+            if (val instanceof Date) {
+                baseDate.setHours(val.getHours(), val.getMinutes(), val.getSeconds(), 0);
+                return baseDate;
+            }
+            return null;
+        };
+
+        const formatDate = (dateObj) => {
+            if (!dateObj) return '-';
+            return dateObj.toLocaleDateString('id-ID', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+        };
+
+        const formatTime = (dateObj) => {
+            if (!dateObj) return '-';
+            return dateObj.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+        };
+
+        const isClockIn = (str) => {
+            if(!str) return false;
+            const lower = str.toString().toLowerCase();
+            if (lower.includes('clock in') || lower.includes('check in') || lower.includes('clock-in')) return true;
+            return /\b(in|masuk)\b/i.test(lower);
+        };
+
+        const isClockOut = (str) => {
+            if(!str) return false;
+            const lower = str.toString().toLowerCase();
+            if (lower.includes('clock out') || lower.includes('check out') || lower.includes('clock-out')) return true;
+            return /\b(out|keluar)\b/i.test(lower);
+        };
+
+        const App = () => {
+            const [stage, setStage] = useState('upload'); 
+            const [errorMsg, setErrorMsg] = useState(''); 
+            const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+            
+            const [reportStartDate, setReportStartDate] = useState('');
+            const [reportEndDate, setReportEndDate] = useState('');
+            const [excludeWeekends, setExcludeWeekends] = useState(true);
+
+            const [rawData, setRawData] = useState([]);
+            const [headers, setHeaders] = useState([]);
+            const [mappings, setMappings] = useState({ name: '', date: '', timeIn: '', timeOut: '', event: '' });
+            
+            const [rawMasterData, setRawMasterData] = useState([]);
+            const [masterHeaders, setMasterHeaders] = useState([]);
+            const [masterMappings, setMasterMappings] = useState({ name: '', directorate: '' });
+            
+            const [rawTimesheetData, setRawTimesheetData] = useState([]);
+            const [timesheetHeaders, setTimesheetHeaders] = useState([]);
+            const [timesheetMappings, setTimesheetMappings] = useState({ name: '', date: '', in: '', out: '' });
+
+            const [rawLeaveData, setRawLeaveData] = useState([]);
+            const [leaveHeaders, setLeaveHeaders] = useState([]);
+            const [leaveMappings, setLeaveMappings] = useState({ name: '', startDate: '', endDate: '', type: '' });
+
+            const [processedData, setProcessedData] = useState([]);
+            const [absenteeData, setAbsenteeData] = useState([]);
+            const [directorateStats, setDirectorateStats] = useState({});
+
+            const [activeTab, setActiveTab] = useState('dashboard'); 
+            const [selectedEmployee, setSelectedEmployee] = useState('');
+            const [selectedDate, setSelectedDate] = useState(''); 
+            const [selectedDirReport, setSelectedDirReport] = useState(''); 
+            const [hoveredDir, setHoveredDir] = useState(null); 
+
+            const downloadPDF = (elementId, fileName) => {
+                const element = document.getElementById(elementId);
+                if (!element) return;
+                
+                setIsGeneratingPDF(true);
+                const opt = {
+                    margin:       10,
+                    filename:     `${fileName}.pdf`,
+                    image:        { type: 'jpeg', quality: 0.98 },
+                    html2canvas:  { scale: 2, useCORS: true, logging: false },
+                    jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                };
+                
+                html2pdf().set(opt).from(element).save().then(() => {
+                    setIsGeneratingPDF(false);
+                }).catch(err => {
+                    console.error("PDF generation error:", err);
+                    setIsGeneratingPDF(false);
+                });
+            };
+
+            const handleFileUpload = (e, setRawDataFn, setHeadersFn, setMappingFn, mappingLogic) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                setErrorMsg('');
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    try {
+                        const data = new Uint8Array(evt.target.result);
+                        const wb = XLSX.read(data, { type: 'array', cellDates: true });
+                        const wsname = wb.SheetNames[0];
+                        const ws = wb.Sheets[wsname];
+                        
+                        const rawJson = XLSX.utils.sheet_to_json(ws, { header: 1 });
+                        if (rawJson.length < 2) {
+                            setErrorMsg(`Data di file ${file.name} kosong atau format tidak valid.`);
+                            return;
+                        }
+                        
+                        const fileHeaders = rawJson[0].map(h => h ? h.toString().trim() : '');
+                        const dataRows = XLSX.utils.sheet_to_json(ws, { raw: true });
+                        
+                        setHeadersFn(fileHeaders);
+                        setRawDataFn(dataRows);
+                        
+                        if(mappingLogic) {
+                            setMappingFn(mappingLogic(fileHeaders));
+                        }
+                    } catch (error) {
+                        console.error(error);
+                        setErrorMsg(`Gagal membaca file ${file.name}. Pastikan formatnya benar (.xlsx/.csv).`);
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            };
+
+            const processData = () => {
+                setErrorMsg('');
+                if (!mappings.date) {
+                    setErrorMsg("Harap pilih Kolom Tanggal untuk Data Mesin.");
+                    return;
+                }
+                
+                if (!reportStartDate || !reportEndDate) {
+                    setErrorMsg("Harap tentukan Periode Laporan terlebih dahulu.");
+                    return;
+                }
+
+                const cleanStr = (str) => String(str || '').trim().toLowerCase();
+
+                let masterMap = {};
+                let dirCount = {};
+                let useMaster = rawMasterData.length > 0 && masterMappings.name;
+                
+                const recordsByEmployee = {};
+                const targetDates = new Set();
+                const startParts = reportStartDate.split('-');
+                const endParts = reportEndDate.split('-');
+                let currTarget = new Date(startParts[0], startParts[1] - 1, startParts[2]);
+                const endTarget = new Date(endParts[0], endParts[1] - 1, endParts[2]);
+                
+                while (currTarget <= endTarget) {
+                    const dateKey = getLocalYYYYMMDD(currTarget);
+                    if (excludeWeekends) {
+                        const day = currTarget.getDay();
+                        if (day !== 0 && day !== 6) { 
+                            targetDates.add(dateKey);
+                        }
+                    } else {
+                        targetDates.add(dateKey);
+                    }
+                    currTarget.setDate(currTarget.getDate() + 1);
+                }
+
+                const initEmployee = (lookupKey, origName, empDir) => {
+                    if (!recordsByEmployee[lookupKey]) {
+                        recordsByEmployee[lookupKey] = {
+                            empKey: lookupKey,
+                            name: origName,
+                            dept: empDir,
+                            daysData: {}
+                        };
+                        targetDates.forEach(dateKey => {
+                            recordsByEmployee[lookupKey].daysData[dateKey] = {
+                                dateKey: dateKey,
+                                dateObj: new Date(`${dateKey}T00:00:00`),
+                                machineEvents: [], 
+                                machineIn: null,   
+                                machineOut: null,  
+                                tsIn: null, tsOut: null,
+                                leaveType: null,
+                                in: null, out: null,
+                                sourceIn: 'none',
+                                sourceOut: 'none',
+                                rawInType: null,
+                                rawOutType: null
+                            };
+                        });
+                    }
+                    return recordsByEmployee[lookupKey];
+                };
+
+                // DB Karyawan
+                if (useMaster) {
+                    rawMasterData.forEach(row => {
+                        const rawName = row[masterMappings.name];
+                        if (rawName) {
+                            const key = cleanStr(rawName);
+                            const dir = row[masterMappings.directorate] || 'Tanpa Direktorat';
+                            masterMap[key] = { originalName: String(rawName).trim(), dir: dir };
+                            dirCount[dir] = (dirCount[dir] || 0) + 1;
+                            initEmployee(key, String(rawName).trim(), dir);
+                        }
+                    });
+                }
+                setDirectorateStats(dirCount);
+
+                // Data Cuti
+                let useLeave = rawLeaveData.length > 0 && leaveMappings.name && leaveMappings.startDate;
+                if(useLeave) {
+                    rawLeaveData.forEach(row => {
+                        const rawName = row[leaveMappings.name];
+                        if (!rawName) return;
+                        const key = cleanStr(rawName);
+                        
+                        let sDate = parseDateString(row[leaveMappings.startDate]);
+                        let eDate = parseDateString(row[leaveMappings.endDate] || row[leaveMappings.startDate]);
+                        let type = row[leaveMappings.type] || 'Cuti/Izin';
+
+                        if(sDate && eDate) {
+                            if(sDate > eDate) { const temp = sDate; sDate = eDate; eDate = temp; }
+                            
+                            let currDate = new Date(sDate);
+                            while(currDate <= eDate) {
+                                const dateKey = getLocalYYYYMMDD(currDate);
+                                if (targetDates.has(dateKey)) {
+                                    const origName = masterMap[key] ? masterMap[key].originalName : String(rawName).trim();
+                                    const empDir = masterMap[key] ? masterMap[key].dir : 'Tanpa Direktorat';
+                                    const empData = initEmployee(key, origName, empDir);
+                                    empData.daysData[dateKey].leaveType = type;
+                                }
+                                currDate.setDate(currDate.getDate() + 1);
+                            }
+                        }
+                    });
+                }
+
+                // Data Timesheet
+                let useTimesheet = rawTimesheetData.length > 0 && timesheetMappings.name && timesheetMappings.date;
+                if (useTimesheet) {
+                    rawTimesheetData.forEach(row => {
+                        const rawName = row[timesheetMappings.name];
+                        if (!rawName) return;
+                        const key = cleanStr(rawName);
+                        
+                        const tDate = parseDateString(row[timesheetMappings.date]);
+                        if(!tDate) return;
+
+                        const dateKey = getLocalYYYYMMDD(tDate);
+                        if (!targetDates.has(dateKey)) return;
+                        
+                        const origName = masterMap[key] ? masterMap[key].originalName : String(rawName).trim();
+                        const empDir = masterMap[key] ? masterMap[key].dir : 'Tanpa Direktorat';
+                        const empData = initEmployee(key, origName, empDir);
+                        const dayObj = empData.daysData[dateKey];
+                        
+                        if (timesheetMappings.in && row[timesheetMappings.in] != null) {
+                            const inTime = parseTimeCell(row[timesheetMappings.in], dateKey);
+                            if (inTime && !isNaN(inTime)) dayObj.tsIn = inTime;
+                        }
+                        
+                        if (timesheetMappings.out && row[timesheetMappings.out] != null) {
+                            const outTime = parseTimeCell(row[timesheetMappings.out], dateKey);
+                            if (outTime && !isNaN(outTime)) dayObj.tsOut = outTime;
+                        }
+                    });
+                }
+
+                let foundValidDate = false;
+                const mappedNameField = mappings.name || headers.find(h => String(h).toLowerCase().includes('name') || String(h).toLowerCase().includes('nama')) || headers[0];
+
+                // Data Mesin 
+                rawData.forEach(row => {
+                    const rawName = row[mappedNameField];
+                    if (!rawName) return;
+                    
+                    const key = cleanStr(rawName);
+                    const origName = masterMap[key] ? masterMap[key].originalName : String(rawName).trim();
+                    const empDir = masterMap[key] ? masterMap[key].dir : 'Tanpa Direktorat';
+                    
+                    const timeObj = parseDateString(row[mappings.date]);
+                    if (!timeObj) return;
+
+                    const dateKey = getLocalYYYYMMDD(timeObj);
+                    if (!targetDates.has(dateKey)) return;
+                    foundValidDate = true;
+
+                    const empData = initEmployee(key, origName, empDir);
+                    const dayObj = empData.daysData[dateKey];
+                    const eventType = row[mappings.event] || ''; 
+                    
+                    if (mappings.timeIn || mappings.timeOut) {
+                        if (mappings.timeIn && row[mappings.timeIn] != null) {
+                             const parsedIn = parseTimeCell(row[mappings.timeIn], dateKey);
+                             if(parsedIn) dayObj.machineEvents.push({ time: parsedIn, type: 'IN' });
+                        }
+                        if (mappings.timeOut && row[mappings.timeOut] != null) {
+                             const parsedOut = parseTimeCell(row[mappings.timeOut], dateKey);
+                             if(parsedOut) dayObj.machineEvents.push({ time: parsedOut, type: 'OUT' });
+                        }
+                    } 
+                    else if (mappings.event) {
+                        dayObj.machineEvents.push({ time: timeObj, type: eventType });
+                    } 
+                    else {
+                        dayObj.machineEvents.push({ time: timeObj, type: '' });
+                    }
+                });
+                
+                if (!foundValidDate && targetDates.size > 0) {
+                    setErrorMsg("Tidak ada data kehadiran (Mesin) yang cocok dengan periode yang Anda pilih.");
+                    return;
+                }
+
+                const finalData = [];
+                Object.keys(recordsByEmployee).forEach(lookupKey => {
+                    const employeeInfo = recordsByEmployee[lookupKey];
+                    const employeeData = {
+                        empKey: employeeInfo.empKey,
+                        name: employeeInfo.name,
+                        dept: employeeInfo.dept,
+                        days: [],
+                        summary: { totalDays: 0, missingOuts: 0, missingIns: 0, duplicates: 0, perfectDays: 0, leaveDays: 0 }
+                    };
+
+                    Object.keys(employeeInfo.daysData).sort().forEach(dateKey => {
+                        const dayData = employeeInfo.daysData[dateKey];
+                        
+                        let machineIn = null;
+                        let machineOut = null;
+                        let hasMultipleIn = false;
+                        let hasMultipleOut = false;
+
+                        if (dayData.machineEvents.length > 0) {
+                            dayData.machineEvents.sort((a, b) => a.time.getTime() - b.time.getTime());
+                            
+                            let inEvts = dayData.machineEvents.filter(e => isClockIn(e.type));
+                            let outEvts = dayData.machineEvents.filter(e => isClockOut(e.type));
+
+                            if (inEvts.length === 0 && outEvts.length === 0) {
+                                inEvts = [dayData.machineEvents[0]];
+                                if (dayData.machineEvents.length > 1) {
+                                    outEvts = [dayData.machineEvents[dayData.machineEvents.length - 1]];
+                                }
+                            }
+                            
+                            if (inEvts.length > 0 && outEvts.length === 0 && dayData.machineEvents.length > 1) outEvts = [dayData.machineEvents[dayData.machineEvents.length - 1]];
+                            if (outEvts.length > 0 && inEvts.length === 0 && dayData.machineEvents.length > 1) inEvts = [dayData.machineEvents[0]];
+
+                            if (inEvts.length > 0) { 
+                                machineIn = inEvts[0].time;
+                                dayData.rawInType = inEvts[0].type;
+                            }
+                            if (outEvts.length > 0) { 
+                                machineOut = outEvts[outEvts.length - 1].time;
+                                dayData.rawOutType = outEvts[outEvts.length - 1].type;
+                            }
+                            
+                            if (inEvts.length > 1) { hasMultipleIn = true; employeeData.summary.duplicates++; }
+                            if (outEvts.length > 1) { hasMultipleOut = true; employeeData.summary.duplicates++; }
+                        }
+
+                        // PRIORITY: Machine 1st, Timesheet 2nd
+                        if (machineIn) { dayData.in = machineIn; dayData.sourceIn = 'machine'; }
+                        else if (dayData.tsIn) { dayData.in = dayData.tsIn; dayData.sourceIn = 'timesheet'; }
+
+                        if (machineOut) { dayData.out = machineOut; dayData.sourceOut = 'machine'; }
+                        else if (dayData.tsOut) { dayData.out = dayData.tsOut; dayData.sourceOut = 'timesheet'; }
+
+                        dayData.hasMultipleIn = hasMultipleIn;
+                        dayData.hasMultipleOut = hasMultipleOut;
+                        
+                        if (!dayData.in && !dayData.out && dayData.leaveType) {
+                            employeeData.summary.leaveDays++;
+                        } else {
+                            if (dayData.in || dayData.out) {
+                                if (dayData.in && !dayData.out) { dayData.missingOut = true; employeeData.summary.missingOuts++; }
+                                if (!dayData.in && dayData.out) { dayData.missingIn = true; employeeData.summary.missingIns++; }
+                                if (dayData.in && dayData.out && !hasMultipleIn && !hasMultipleOut) employeeData.summary.perfectDays++;
+                                employeeData.summary.totalDays++;
+                            }
+                        }
+                        
+                        employeeData.days.push(dayData);
+                    });
+
+                    finalData.push(employeeData);
+                });
+
+                const tempAbsenteeData = [];
+                const sortedDates = Array.from(targetDates).sort(); 
+                if (useMaster) {
+                    sortedDates.forEach(dateKey => {
+                        Object.keys(masterMap).forEach(lookupKey => {
+                            const empDay = recordsByEmployee[lookupKey] && recordsByEmployee[lookupKey].daysData[dateKey];
+                            const hasAttended = empDay && (empDay.in || empDay.out);
+                            const hasLeave = empDay && empDay.leaveType;
+
+                            if (!hasAttended && !hasLeave) {
+                                tempAbsenteeData.push({
+                                    dateKey: dateKey,
+                                    dateObj: new Date(dateKey),
+                                    empKey: masterMap[lookupKey].originalName,
+                                    name: masterMap[lookupKey].originalName,
+                                    dept: masterMap[lookupKey].dir
+                                });
+                            }
+                        });
+                    });
+                }
+
+                finalData.sort((a, b) => a.name.localeCompare(b.name));
+                tempAbsenteeData.sort((a, b) => a.name.localeCompare(b.name));
+
+                setProcessedData(finalData);
+                setAbsenteeData(tempAbsenteeData);
+                
+                if (finalData.length > 0) setSelectedEmployee(finalData[0].empKey);
+                if (sortedDates.length > 0) setSelectedDate(sortedDates[sortedDates.length - 1]);
+                const uniqueDirs = Object.keys(dirCount);
+                if (uniqueDirs.length > 0) setSelectedDirReport(uniqueDirs[0]);
+
+                setStage('main');
+            };
+
+            const dashboardStats = useMemo(() => {
+                if (processedData.length === 0) return null;
+                let totalEmployees = processedData.length;
+                let totalAnomalies = 0;
+                let totalMissingOut = 0;
+                let totalLeaves = 0;
+
+                const anomaliesList = [];
+
+                processedData.forEach(emp => {
+                    totalMissingOut += emp.summary.missingOuts;
+                    totalLeaves += emp.summary.leaveDays;
+                    totalAnomalies += (emp.summary.missingOuts + emp.summary.missingIns + emp.summary.duplicates);
+
+                    emp.days.forEach(day => {
+                        if (day.missingOut || day.missingIn || day.hasMultipleIn || day.hasMultipleOut) {
+                            anomaliesList.push({
+                                name: emp.name,
+                                dept: emp.dept,
+                                date: day.dateObj,
+                                in: day.in, out: day.out,
+                                missingOut: day.missingOut, missingIn: day.missingIn,
+                                isDuplicate: day.hasMultipleIn || day.hasMultipleOut
+                            });
+                        }
+                    });
+                });
+
+                anomaliesList.sort((a, b) => b.date - a.date);
+                return { totalEmployees, totalAnomalies, totalMissingOut, totalLeaves, anomaliesList };
+            }, [processedData]);
+
+            const productivityStats = useMemo(() => {
+                if (processedData.length === 0 || Object.keys(directorateStats).length === 0) return null;
+                
+                const globalDates = new Set();
+                processedData.forEach(emp => emp.days.forEach(d => globalDates.add(d.dateKey)));
+                const totalDates = globalDates.size || 1;
+
+                const stats = {};
+                Object.keys(directorateStats).forEach(dir => {
+                    stats[dir] = { 
+                        dir, 
+                        headcount: directorateStats[dir], 
+                        buckets: { '0-25': [], '26-50': [], '51-75': [], '76-100': [] },
+                        issues: { missingOut: 0, missingIn: 0, duplicates: 0, absents: 0, leaves: 0 }
+                    };
+                });
+
+                processedData.forEach(emp => {
+                    const dir = emp.dept || 'Tanpa Direktorat';
+                    if (!stats[dir]) {
+                        stats[dir] = { dir, headcount: 1, buckets: { '0-25': [], '26-50': [], '51-75': [], '76-100': [] }, issues: { missingOut: 0, missingIn: 0, duplicates: 0, absents: 0, leaves: 0 } };
+                    }
+                    
+                    const expectedDays = totalDates - emp.summary.leaveDays; 
+                    const attendanceRate = expectedDays > 0 ? (emp.summary.totalDays / expectedDays) * 100 : 100; 
+                    
+                    if (attendanceRate > 75) stats[dir].buckets['76-100'].push(emp);
+                    else if (attendanceRate > 50) stats[dir].buckets['51-75'].push(emp);
+                    else if (attendanceRate > 25) stats[dir].buckets['26-50'].push(emp);
+                    else stats[dir].buckets['0-25'].push(emp);
+
+                    stats[dir].issues.missingOut += emp.summary.missingOuts;
+                    stats[dir].issues.missingIn += emp.summary.missingIns;
+                    stats[dir].issues.duplicates += emp.summary.duplicates;
+                    stats[dir].issues.leaves += emp.summary.leaveDays;
+                    
+                    const trueAbsents = expectedDays - emp.summary.totalDays;
+                    stats[dir].issues.absents += (trueAbsents > 0 ? trueAbsents : 0); 
+                });
+
+                return Object.values(stats).sort((a,b) => b.headcount - a.headcount);
+            }, [processedData, directorateStats]);
+
+            const absenteeStatsByDept = useMemo(() => {
+                if (!absenteeData.length || !selectedDate) return [];
+                const filtered = absenteeData.filter(a => a.dateKey === selectedDate);
+                const grouped = {};
+                filtered.forEach(record => {
+                    if (!grouped[record.dept]) grouped[record.dept] = [];
+                    grouped[record.dept].push(record);
+                });
+                const result = Object.keys(grouped).map(dir => ({
+                    dept: dir,
+                    totalEmployees: directorateStats[dir] || 0,
+                    count: grouped[dir].length,
+                    employees: grouped[dir]
+                }));
+                return result.sort((a, b) => a.dept.localeCompare(b.dept));
+            }, [absenteeData, selectedDate, directorateStats]);
+
+            const getReportPeriodStr = () => {
+                if(!reportStartDate || !reportEndDate) return '';
+                const startStr = new Date(reportStartDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+                const endStr = new Date(reportEndDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+                return `${startStr} s/d ${endStr}`;
+            };
+
+            if (stage === 'upload') {
+                return (
+                    <div className="min-h-screen flex flex-col font-sans bg-[#f4f7f9]">
+                        
+                        {/* HERO HEADER SECTION (EXACT MOCKUP) */}
+                        <div className="hero-bg w-full flex justify-center pb-24 relative overflow-hidden">
+                            <img 
+                                src="https://i.ibb.co.com/j9fyHJzy/banner-logo-lalala.jpg" 
+                                alt="Hero Banner" 
+                                className="w-full max-w-5xl object-contain object-top" 
+                            />
+                        </div>
+
+                        {/* MAIN UPLOAD CONTAINER */}
+                        <div className="max-w-5xl mx-auto px-4 w-full -mt-24 md:-mt-32 relative z-20 pb-16">
+                            
+                            {errorMsg && <div className="mb-6 p-4 bg-rose-50 border-l-4 border-rose-500 text-rose-700 rounded-xl shadow text-sm font-bold flex items-center"><IconWarning className="mr-2 w-5 h-5"/> {errorMsg}</div>}
+
+                            {/* WHITE WRAPPER EXACTLY LIKE MOCKUP */}
+                            <div className="bg-white rounded-[2rem] p-6 md:p-10 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.1)] border border-slate-100">
+                                
+                                {/* STEP 1: DATE PERIOD (Full Width) */}
+                                <div className="bg-[#f8fafc] border border-slate-200 rounded-2xl p-6 md:p-8 mb-6">
+                                    <div className="flex items-center mb-6">
+                                        <div className="w-8 h-8 rounded-full bg-[#0f766e] text-white flex items-center justify-center font-bold mr-3 shadow-sm text-sm">1</div>
+                                        <h3 className="font-extrabold text-[#0b2136] text-lg">Pengaturan Periode Laporan (Wajib)</h3>
+                                        <IconStar className="ml-3 text-yellow-400 fill-current w-5 h-5 drop-shadow-sm"/>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+                                        <div>
+                                            <label className="block text-sm font-semibold text-[#0b2136] mb-2">Tanggal Mulai</label>
+                                            <input type="date" value={reportStartDate} onChange={e => setReportStartDate(e.target.value)} className="w-full text-slate-700 border border-slate-300 bg-white rounded-xl p-3 focus:ring-2 focus:ring-[#0f766e] focus:border-[#0f766e] outline-none transition shadow-sm" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-semibold text-[#0b2136] mb-2">Tanggal Akhir</label>
+                                            <input type="date" value={reportEndDate} onChange={e => setReportEndDate(e.target.value)} className="w-full text-slate-700 border border-slate-300 bg-white rounded-xl p-3 focus:ring-2 focus:ring-[#0f766e] focus:border-[#0f766e] outline-none transition shadow-sm" />
+                                        </div>
+                                        <div className="flex items-center h-full pb-3 pl-2">
+                                            <label className="flex items-center cursor-pointer group">
+                                                <input type="checkbox" checked={excludeWeekends} onChange={e => setExcludeWeekends(e.target.checked)} className="custom-checkbox mr-3 shadow-sm" />
+                                                <span className="text-[15px] font-bold text-[#0b2136]">Abaikan Sabtu & Minggu</span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="flex items-center mt-6 pt-5 text-sm text-[#0f766e] font-semibold border-t border-slate-200">
+                                        <IconInfo className="w-4 h-4 mr-2"/> Periode yang dipilih akan digunakan untuk semua laporan.
+                                    </div>
+                                </div>
+
+                                {/* STEPS 2-5 GRID */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    
+                                    {/* CARD 2: MESIN */}
+                                    <div className="bg-white border border-slate-200 rounded-2xl p-6">
+                                        <div className="flex items-center mb-1">
+                                            <div className="w-7 h-7 rounded-full bg-[#0f766e] text-white flex items-center justify-center font-bold mr-3 shadow-sm text-xs">2</div>
+                                            <h3 className="font-extrabold text-[#0b2136] text-[16px]">Data Mesin (Wajib)</h3>
+                                        </div>
+                                        <p className="text-[13px] text-slate-500 mb-4 pl-10 font-medium">Sumber utama kehadiran — prioritas #1.</p>
+                                        
+                                        <label className={`cursor-pointer flex flex-col items-center justify-center w-full h-28 border-2 border-dashed ${headers.length > 0 ? 'border-[#10b981] bg-[#ecfdf5]' : 'border-[#10b981] bg-[#f0fdf4] hover:bg-[#ecfdf5]'} rounded-xl transition-all`}>
+                                            <IconCloudUpload className="w-6 h-6 mb-2 text-[#0f766e]" />
+                                            <span className="font-bold text-[14px] text-[#0f766e]">{headers.length > 0 ? '✔ File Dimuat' : '+ Pilih File Mesin'}</span>
+                                            {headers.length === 0 && <span className="text-[11px] text-slate-400 mt-1">atau drag & drop file di sini</span>}
+                                            <input type="file" className="hidden" accept=".xlsx, .xls, .csv" onChange={(e) => handleFileUpload(e, setRawData, setHeaders, setMappings, (h) => ({
+                                                name: h.find(x => String(x).toLowerCase().includes('name') || String(x).toLowerCase().includes('nama')) || h[0], date: h.find(x => String(x).toLowerCase().includes('date') || String(x).toLowerCase().includes('tanggal') || String(x).toLowerCase().includes('waktu')) || h[0], timeIn: '', timeOut: '', event: ''
+                                            }))} />
+                                        </label>
+                                        <div className="flex items-center mt-4 text-[12px] text-[#0f766e] font-medium"><IconInfo className="w-3.5 h-3.5 mr-1.5"/> Format yang didukung: .xlsx, .xls</div>
+                                    </div>
+
+                                    {/* CARD 3: MASTER DATA */}
+                                    <div className="bg-white border border-slate-200 rounded-2xl p-6">
+                                        <div className="flex items-center mb-1">
+                                            <div className="w-7 h-7 rounded-full bg-[#0f766e] text-white flex items-center justify-center font-bold mr-3 shadow-sm text-xs">3</div>
+                                            <h3 className="font-extrabold text-[#0b2136] text-[16px]">Master Data Karyawan</h3>
+                                        </div>
+                                        <p className="text-[13px] text-slate-500 mb-4 pl-10 font-medium">Memunculkan info Direktorat & daftar orang Tidak Hadir.</p>
+                                        
+                                        <label className={`cursor-pointer flex flex-col items-center justify-center w-full h-28 border-2 border-dashed ${masterHeaders.length > 0 ? 'border-slate-400 bg-slate-100' : 'border-slate-300 bg-[#f8fafc] hover:bg-slate-100'} rounded-xl transition-all`}>
+                                            <IconCloudUpload className="w-6 h-6 mb-2 text-slate-500" />
+                                            <span className="font-bold text-[14px] text-[#0b2136]">{masterHeaders.length > 0 ? '✔ File Dimuat' : '+ Pilih File Karyawan'}</span>
+                                            {masterHeaders.length === 0 && <span className="text-[11px] text-slate-400 mt-1">atau drag & drop file di sini</span>}
+                                            <input type="file" className="hidden" accept=".xlsx, .xls, .csv" onChange={(e) => handleFileUpload(e, setRawMasterData, setMasterHeaders, setMasterMappings, (h) => ({
+                                                name: h.find(x => String(x).toLowerCase().includes('name') || String(x).toLowerCase().includes('nama')) || h[0], directorate: h.find(x => String(x).toLowerCase().includes('dir') || String(x).toLowerCase().includes('dept')) || h[1]
+                                            }))} />
+                                        </label>
+                                        <div className="flex items-center mt-4 text-[12px] text-[#0f766e] font-medium"><IconInfo className="w-3.5 h-3.5 mr-1.5"/> Format yang didukung: .xlsx, .xls</div>
+                                    </div>
+
+                                    {/* CARD 4: TIMESHEET */}
+                                    <div className="bg-white border border-slate-200 rounded-2xl p-6">
+                                        <div className="flex items-center mb-1">
+                                            <div className="w-7 h-7 rounded-full bg-[#0f766e] text-white flex items-center justify-center font-bold mr-3 shadow-sm text-xs">4</div>
+                                            <h3 className="font-extrabold text-[#0b2136] text-[16px]">Data Timesheet Manual</h3>
+                                        </div>
+                                        <p className="text-[13px] text-slate-500 mb-4 pl-10 font-medium">Terkombinasi <span className="text-amber-500 font-bold">HANYA</span> untuk menambal mesin jika kosong.</p>
+                                        
+                                        <label className={`cursor-pointer flex flex-col items-center justify-center w-full h-28 border-2 border-dashed ${timesheetHeaders.length > 0 ? 'border-[#10b981] bg-[#ecfdf5]' : 'border-[#10b981] bg-[#f0fdf4] hover:bg-[#ecfdf5]'} rounded-xl transition-all`}>
+                                            <IconCloudUpload className="w-6 h-6 mb-2 text-[#0f766e]" />
+                                            <span className="font-bold text-[14px] text-[#0f766e]">{timesheetHeaders.length > 0 ? '✔ File Dimuat' : '+ Pilih File Timesheet'}</span>
+                                            {timesheetHeaders.length === 0 && <span className="text-[11px] text-slate-400 mt-1">atau drag & drop file di sini</span>}
+                                            <input type="file" className="hidden" accept=".xlsx, .xls, .csv" onChange={(e) => handleFileUpload(e, setRawTimesheetData, setTimesheetHeaders, setTimesheetMappings, (h) => ({
+                                                name: h.find(x => String(x).toLowerCase().includes('name') || String(x).toLowerCase().includes('nama')) || h[0], date: h.find(x => String(x).toLowerCase().includes('date') || String(x).toLowerCase().includes('tanggal')) || h[1], in: h.find(x => String(x).toLowerCase().includes('in') || String(x).toLowerCase().includes('masuk')) || '', out: h.find(x => String(x).toLowerCase().includes('out') || String(x).toLowerCase().includes('keluar')) || ''
+                                            }))} />
+                                        </label>
+                                        <div className="flex items-center mt-4 text-[12px] text-[#0f766e] font-medium"><IconInfo className="w-3.5 h-3.5 mr-1.5"/> Format yang didukung: .xlsx, .xls</div>
+                                    </div>
+
+                                    {/* CARD 5: CUTI */}
+                                    <div className="bg-white border border-slate-200 rounded-2xl p-6">
+                                        <div className="flex items-center mb-1">
+                                            <div className="w-7 h-7 rounded-full bg-[#0f766e] text-white flex items-center justify-center font-bold mr-3 shadow-sm text-xs">5</div>
+                                            <h3 className="font-extrabold text-[#0b2136] text-[16px]">Data Cuti & Sakit</h3>
+                                        </div>
+                                        <p className="text-[13px] text-slate-500 mb-4 pl-10 font-medium">Mengecualikan karyawan dari daftar laporan bolos harian.</p>
+                                        
+                                        <label className={`cursor-pointer flex flex-col items-center justify-center w-full h-28 border-2 border-dashed ${leaveHeaders.length > 0 ? 'border-slate-400 bg-slate-100' : 'border-slate-300 bg-[#f8fafc] hover:bg-slate-100'} rounded-xl transition-all`}>
+                                            <IconCloudUpload className="w-6 h-6 mb-2 text-slate-500" />
+                                            <span className="font-bold text-[14px] text-[#0b2136]">{leaveHeaders.length > 0 ? '✔ File Dimuat' : '+ Pilih File Cuti & Sakit'}</span>
+                                            {leaveHeaders.length === 0 && <span className="text-[11px] text-slate-400 mt-1">atau drag & drop file di sini</span>}
+                                            <input type="file" className="hidden" accept=".xlsx, .xls, .csv" onChange={(e) => handleFileUpload(e, setRawLeaveData, setLeaveHeaders, setLeaveMappings, (h) => ({
+                                                name: h.find(x => String(x).toLowerCase().includes('name') || String(x).toLowerCase().includes('nama')) || h[0], startDate: h.find(x => String(x).toLowerCase().includes('start') || String(x).toLowerCase().includes('mulai') || String(x).toLowerCase().includes('date')) || h[1], endDate: h.find(x => String(x).toLowerCase().includes('end') || String(x).toLowerCase().includes('selesai')) || '', type: h.find(x => String(x).toLowerCase().includes('type') || String(x).toLowerCase().includes('keterangan')) || ''
+                                            }))} />
+                                        </label>
+                                        <div className="flex items-center mt-4 text-[12px] text-[#0f766e] font-medium"><IconInfo className="w-3.5 h-3.5 mr-1.5"/> Format yang didukung: .xlsx, .xls</div>
+                                    </div>
+
+                                </div>
+                                
+                                {/* SUBMIT BUTTON */}
+                                <div className="mt-8 mb-2">
+                                    <button 
+                                        onClick={() => {
+                                            if(!reportStartDate || !reportEndDate) setErrorMsg("Harap isi Tanggal Mulai dan Akhir pada Pengaturan Periode (Nomor 1).");
+                                            else if(headers.length === 0) setErrorMsg("Harap upload Data Mesin (Nomor 2) terlebih dahulu.");
+                                            else setStage('mapping');
+                                        }} 
+                                        className={`w-full py-4 rounded-xl font-bold transition-all flex items-center justify-center text-[16px] tracking-wide shadow-lg ${
+                                            (headers.length > 0 && reportStartDate && reportEndDate) 
+                                            ? 'bg-[#021326] bg-gradient-to-r from-[#021326] via-[#092949] to-[#021326] text-white hover:shadow-xl hover:bg-opacity-90' 
+                                            : 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                                        }`}
+                                    >Lanjut ke Konfirmasi Kolom &rarr;</button>
+                                </div>
+                                <p className="text-center text-[10px] font-medium text-slate-400 mt-5">Terintegrasi untuk operasi Onshore & Offshore • Data mesin, timesheet, dan cuti dalam satu alur.</p>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (stage === 'mapping') {
+                return (
+                    <div className="min-h-screen bg-[#f4f7f9] flex items-center justify-center p-4 font-sans">
+                        <div className="bg-white p-8 md:p-10 rounded-[2rem] shadow-2xl max-w-5xl w-full max-h-[95vh] overflow-y-auto border border-slate-100">
+                            <div className="flex items-center mb-8 border-b-2 border-slate-100 pb-6">
+                                <img src="https://i.ibb.co.com/j9fyHJzy/banner-logo-lalala.jpg" alt="Logo" className="h-16 w-auto object-contain mr-5 drop-shadow-sm rounded-xl" />
+                                <div>
+                                    <h2 className="text-3xl font-black text-[#0b2136] tracking-tight">Konfirmasi Kolom</h2>
+                                    <p className="text-slate-500 text-xs font-bold mt-1">Pastikan sistem mengidentifikasi data Anda dengan tepat.</p>
+                                </div>
+                            </div>
+                            
+                            {errorMsg && <div className="mb-6 p-4 bg-rose-50 border-l-4 border-rose-500 text-rose-700 rounded-xl shadow-sm text-sm font-bold flex items-center"><IconWarning className="mr-2"/> {errorMsg}</div>}
+
+                            <div className="space-y-6">
+                                {/* MACHINE MAPPING */}
+                                <div className="border-2 border-[#0f766e] rounded-3xl p-6 bg-teal-50/30 shadow-sm relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 bg-[#0f766e] text-white text-[10px] font-black px-4 py-1.5 rounded-bl-xl uppercase tracking-widest">Prioritas #1</div>
+                                    <h3 className="font-extrabold text-[#0b2136] mb-2 flex items-center text-lg"><span className="flex items-center justify-center w-6 h-6 rounded-full bg-[#0f766e] text-white text-[11px] mr-3 shadow-sm">1</span> Kolom Data Mesin Utama</h3>
+                                    <p className="text-[11px] text-teal-700 mb-5 font-semibold leading-relaxed max-w-3xl">Jika Jam & Tanggal berada di satu sel, pilih kolom tersebut pada <b>Tanggal</b> dan isi bagian <b>Tipe Status</b>. Jika Jam In/Out terpisah, isi pada <b>Jam Masuk (IN)</b> dan <b>Jam Keluar (OUT)</b>.</p>
+                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+                                        <div><label className="block text-[10px] font-black mb-2 text-[#0f766e] uppercase tracking-wider">Nama Karyawan</label><select value={mappings.name || ''} onChange={e => setMappings({...mappings, name: e.target.value})} className="w-full text-sm border border-slate-300 bg-white rounded-xl p-2.5 font-bold focus:border-[#0f766e] outline-none shadow-sm"><option value="">-- Auto --</option>{headers.map((h, i) => <option key={i} value={h}>{h}</option>)}</select></div>
+                                        <div><label className="block text-[10px] font-black mb-2 text-[#0f766e] uppercase tracking-wider">Tanggal (Wajib)</label><select value={mappings.date} onChange={e => setMappings({...mappings, date: e.target.value})} className="w-full text-sm border border-slate-300 bg-white rounded-xl p-2.5 font-bold focus:border-[#0f766e] outline-none shadow-sm"><option value="">-- Pilih --</option>{headers.map((h, i) => <option key={i} value={h}>{h}</option>)}</select></div>
+                                        <div><label className="block text-[10px] font-black mb-2 text-[#0f766e] uppercase tracking-wider">Jam Masuk / IN (Opsional)</label><select value={mappings.timeIn} onChange={e => setMappings({...mappings, timeIn: e.target.value})} className="w-full text-sm border border-slate-300 bg-white rounded-xl p-2.5 font-bold focus:border-[#0f766e] outline-none shadow-sm"><option value="">-- Kosong --</option>{headers.map((h, i) => <option key={i} value={h}>{h}</option>)}</select></div>
+                                        <div><label className="block text-[10px] font-black mb-2 text-[#0f766e] uppercase tracking-wider">Jam Keluar / OUT (Opsional)</label><select value={mappings.timeOut} onChange={e => setMappings({...mappings, timeOut: e.target.value})} className="w-full text-sm border border-slate-300 bg-white rounded-xl p-2.5 font-bold focus:border-[#0f766e] outline-none shadow-sm"><option value="">-- Kosong --</option>{headers.map((h, i) => <option key={i} value={h}>{h}</option>)}</select></div>
+                                        <div className="lg:col-span-4"><label className="block text-[10px] font-black mb-2 text-[#0f766e] uppercase tracking-wider">Tipe Status (Khusus Log Menyatu)</label><select value={mappings.event} onChange={e => setMappings({...mappings, event: e.target.value})} className="w-full text-sm border border-slate-300 bg-white rounded-xl p-2.5 font-bold focus:border-[#0f766e] outline-none max-w-sm shadow-sm"><option value="">-- Kosong --</option>{headers.map((h, i) => <option key={i} value={h}>{h}</option>)}</select></div>
+                                    </div>
+                                </div>
+
+                                {/* DB MAPPING */}
+                                {masterHeaders.length > 0 && (
+                                    <div className="border border-slate-200 rounded-3xl p-6 bg-white shadow-sm">
+                                        <h3 className="font-extrabold text-[#0b2136] mb-4 flex items-center text-[15px]"><span className="flex items-center justify-center w-6 h-6 rounded-full bg-[#0f766e] text-white text-[11px] mr-3">3</span> Kolom Master Database</h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                            <div><label className="block text-[10px] font-black mb-2 text-slate-500 uppercase tracking-wider">Nama Karyawan (Penghubung)</label><select value={masterMappings.name} onChange={e => setMasterMappings({...masterMappings, name: e.target.value})} className="w-full text-sm border border-slate-300 bg-slate-50 rounded-xl p-2.5 font-bold focus:border-[#0f766e] focus:bg-white outline-none"><option value="">-- Pilih --</option>{masterHeaders.map((h, i) => <option key={i} value={h}>{h}</option>)}</select></div>
+                                            <div><label className="block text-[10px] font-black mb-2 text-slate-500 uppercase tracking-wider">Direktorat / Divisi</label><select value={masterMappings.directorate} onChange={e => setMasterMappings({...masterMappings, directorate: e.target.value})} className="w-full text-sm border border-slate-300 bg-slate-50 rounded-xl p-2.5 font-bold focus:border-[#0f766e] focus:bg-white outline-none"><option value="">-- Pilih --</option>{masterHeaders.map((h, i) => <option key={i} value={h}>{h}</option>)}</select></div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* TIMESHEET MAPPING */}
+                                {timesheetHeaders.length > 0 && (
+                                    <div className="border border-[#10b981] rounded-3xl p-6 bg-[#f0fdf4] shadow-sm relative overflow-hidden">
+                                        <div className="absolute top-0 right-0 bg-amber-500 text-white text-[9px] font-black px-3 py-1 rounded-bl-lg uppercase tracking-widest">Penambal</div>
+                                        <h3 className="font-extrabold text-[#0b2136] mb-4 flex items-center text-[15px]"><span className="flex items-center justify-center w-6 h-6 rounded-full bg-[#0f766e] text-white text-[11px] mr-3">4</span> Kolom Timesheet (Manual)</h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+                                            <div><label className="block text-[10px] font-black mb-2 text-[#0f766e] uppercase tracking-wider">Nama Karyawan</label><select value={timesheetMappings.name} onChange={e => setTimesheetMappings({...timesheetMappings, name: e.target.value})} className="w-full text-sm border border-slate-300 bg-white rounded-xl p-2.5 font-bold focus:border-amber-500 outline-none shadow-sm"><option value="">-- Pilih --</option>{timesheetHeaders.map((h, i) => <option key={i} value={h}>{h}</option>)}</select></div>
+                                            <div><label className="block text-[10px] font-black mb-2 text-[#0f766e] uppercase tracking-wider">Tanggal</label><select value={timesheetMappings.date} onChange={e => setTimesheetMappings({...timesheetMappings, date: e.target.value})} className="w-full text-sm border border-slate-300 bg-white rounded-xl p-2.5 font-bold focus:border-amber-500 outline-none shadow-sm"><option value="">-- Pilih --</option>{timesheetHeaders.map((h, i) => <option key={i} value={h}>{h}</option>)}</select></div>
+                                            <div><label className="block text-[10px] font-black mb-2 text-[#0f766e] uppercase tracking-wider">Jam Masuk (IN)</label><select value={timesheetMappings.in} onChange={e => setTimesheetMappings({...timesheetMappings, in: e.target.value})} className="w-full text-sm border border-slate-300 bg-white rounded-xl p-2.5 font-bold focus:border-amber-500 outline-none shadow-sm"><option value="">-- Kosong --</option>{timesheetHeaders.map((h, i) => <option key={i} value={h}>{h}</option>)}</select></div>
+                                            <div><label className="block text-[10px] font-black mb-2 text-[#0f766e] uppercase tracking-wider">Jam Keluar (OUT)</label><select value={timesheetMappings.out} onChange={e => setTimesheetMappings({...timesheetMappings, out: e.target.value})} className="w-full text-sm border border-slate-300 bg-white rounded-xl p-2.5 font-bold focus:border-amber-500 outline-none shadow-sm"><option value="">-- Kosong --</option>{timesheetHeaders.map((h, i) => <option key={i} value={h}>{h}</option>)}</select></div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* LEAVE MAPPING */}
+                                {leaveHeaders.length > 0 && (
+                                    <div className="border border-slate-200 rounded-3xl p-6 bg-white shadow-sm">
+                                        <h3 className="font-extrabold text-[#0b2136] mb-4 flex items-center text-[15px]"><span className="flex items-center justify-center w-6 h-6 rounded-full bg-[#0f766e] text-white text-[11px] mr-3">5</span> Kolom Cuti & Sakit</h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+                                            <div><label className="block text-[10px] font-black mb-2 text-slate-500 uppercase tracking-wider">Nama Karyawan</label><select value={leaveMappings.name} onChange={e => setLeaveMappings({...leaveMappings, name: e.target.value})} className="w-full text-sm border border-slate-300 bg-slate-50 rounded-xl p-2.5 font-bold focus:border-[#0f766e] focus:bg-white outline-none"><option value="">-- Pilih --</option>{leaveHeaders.map((h, i) => <option key={i} value={h}>{h}</option>)}</select></div>
+                                            <div><label className="block text-[10px] font-black mb-2 text-slate-500 uppercase tracking-wider">Tanggal Mulai</label><select value={leaveMappings.startDate} onChange={e => setLeaveMappings({...leaveMappings, startDate: e.target.value})} className="w-full text-sm border border-slate-300 bg-slate-50 rounded-xl p-2.5 font-bold focus:border-[#0f766e] focus:bg-white outline-none"><option value="">-- Pilih --</option>{leaveHeaders.map((h, i) => <option key={i} value={h}>{h}</option>)}</select></div>
+                                            <div><label className="block text-[10px] font-black mb-2 text-slate-500 uppercase tracking-wider">Tanggal Akhir</label><select value={leaveMappings.endDate} onChange={e => setLeaveMappings({...leaveMappings, endDate: e.target.value})} className="w-full text-sm border border-slate-300 bg-slate-50 rounded-xl p-2.5 font-bold focus:border-[#0f766e] focus:bg-white outline-none"><option value="">-- Sama --</option>{leaveHeaders.map((h, i) => <option key={i} value={h}>{h}</option>)}</select></div>
+                                            <div><label className="block text-[10px] font-black mb-2 text-slate-500 uppercase tracking-wider">Jenis Cuti</label><select value={leaveMappings.type} onChange={e => setLeaveMappings({...leaveMappings, type: e.target.value})} className="w-full text-sm border border-slate-300 bg-slate-50 rounded-xl p-2.5 font-bold focus:border-[#0f766e] focus:bg-white outline-none"><option value="">-- Kosong --</option>{leaveHeaders.map((h, i) => <option key={i} value={h}>{h}</option>)}</select></div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="mt-10 flex gap-5 border-t-2 border-slate-100 pt-8">
+                                <button onClick={() => setStage('upload')} className="w-1/3 bg-slate-100 text-slate-600 font-black py-4 rounded-xl hover:bg-slate-200 transition text-[13px] tracking-widest uppercase">Kembali</button>
+                                <button onClick={processData} className="w-2/3 bg-[#021326] text-white font-black py-4 rounded-xl hover:bg-[#092949] hover:shadow-lg transition-all text-[15px] tracking-wide shadow-md">Proses Data Sekarang &rarr;</button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            const currentEmployeeData = processedData.find(e => e.empKey === selectedEmployee);
+
+            return (
+                <div className="min-h-screen flex flex-col no-print bg-[#f4f7f9] font-sans">
+                    {/* STICKY HEADER NAV */}
+                    <header className="bg-white shadow-sm sticky top-0 z-30 no-print border-b border-slate-200/60">
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                            <div className="flex flex-col lg:flex-row justify-between items-center py-3 gap-4">
+                                <div className="flex items-center">
+                                    <img src="https://i.ibb.co.com/j9fyHJzy/banner-logo-lalala.jpg" alt="Logo" className="h-10 w-auto object-contain mr-3 rounded-lg" />
+                                </div>
+                                <div className="flex flex-wrap space-x-1 sm:space-x-2 w-full justify-center lg:justify-start lg:w-auto bg-slate-50 p-1.5 rounded-xl border border-slate-200">
+                                    <button onClick={() => setActiveTab('dashboard')} className={`inline-flex items-center px-4 py-2.5 rounded-lg text-[13px] font-bold transition-all ${activeTab === 'dashboard' ? 'bg-[#0f766e] text-white shadow-sm ring-1 ring-[#0f766e]' : 'text-slate-500 hover:text-slate-700 hover:bg-white'}`}><IconDashboard className="mr-2 h-4 w-4"/> Dasbor</button>
+                                    <button onClick={() => setActiveTab('report')} className={`inline-flex items-center px-4 py-2.5 rounded-lg text-[13px] font-bold transition-all ${activeTab === 'report' ? 'bg-[#0f766e] text-white shadow-sm ring-1 ring-[#0f766e]' : 'text-slate-500 hover:text-slate-700 hover:bg-white'}`}><IconUser className="mr-2 h-4 w-4"/> Lap. Individu</button>
+                                    {rawMasterData.length > 0 && <button onClick={() => setActiveTab('dir-report')} className={`inline-flex items-center px-4 py-2.5 rounded-lg text-[13px] font-bold transition-all ${activeTab === 'dir-report' ? 'bg-[#0f766e] text-white shadow-sm ring-1 ring-[#0f766e]' : 'text-slate-500 hover:text-slate-700 hover:bg-white'}`}><IconUsers className="mr-2 h-4 w-4"/> Lap. Direktorat</button>}
+                                    <button onClick={() => setActiveTab('anomalies')} className={`inline-flex items-center px-4 py-2.5 rounded-lg text-[13px] font-bold transition-all ${activeTab === 'anomalies' ? 'bg-[#0f766e] text-white shadow-sm ring-1 ring-[#0f766e]' : 'text-slate-500 hover:text-slate-700 hover:bg-white'}`}><IconWarning className="mr-2 h-4 w-4"/> Anomali</button>
+                                    {rawMasterData.length > 0 && <button onClick={() => setActiveTab('absent')} className={`inline-flex items-center px-4 py-2.5 rounded-lg text-[13px] font-bold transition-all ${activeTab === 'absent' ? 'bg-[#0f766e] text-white shadow-sm ring-1 ring-[#0f766e]' : 'text-slate-500 hover:text-slate-700 hover:bg-white'}`}><IconAlert className="mr-2 h-4 w-4"/> Tidak Hadir</button>}
+                                </div>
+                                <div>
+                                    <button onClick={() => setStage('upload')} className="text-[11px] text-[#0f766e] font-bold bg-[#ecfdf5] hover:bg-[#d1fae5] border border-[#10b981] rounded-lg px-5 py-2.5 transition shadow-sm uppercase tracking-wider flex items-center"><IconCloudUpload className="w-3.5 h-3.5 mr-2"/> Upload Ulang</button>
+                                </div>
+                            </div>
+                        </div>
+                    </header>
+
+                    <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+                        {/* TAB: DASHBOARD */}
+                        {activeTab === 'dashboard' && dashboardStats && (
+                            <div className="space-y-6">
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
+                                    <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/60 flex items-center hover:shadow-md transition"><div className="p-3.5 rounded-2xl bg-slate-50 text-slate-600 mr-4 border border-slate-200"><IconUser /></div><div><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Karyawan</p><p className="text-3xl font-black text-[#0b2136]">{dashboardStats.totalEmployees}</p></div></div>
+                                    <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/60 flex items-center hover:shadow-md transition"><div className="p-3.5 rounded-2xl bg-emerald-50 text-[#0f766e] mr-4 border border-emerald-100"><IconCalendar /></div><div><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Sedang Cuti/Sakit</p><p className="text-3xl font-black text-[#0b2136]">{dashboardStats.totalLeaves} <span className="text-sm text-slate-400 font-bold">Hari</span></p></div></div>
+                                    <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/60 flex items-center hover:shadow-md transition"><div className="p-3.5 rounded-2xl bg-amber-50 text-amber-600 mr-4 border border-amber-100"><IconAlert /></div><div><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Lupa Absen Keluar</p><p className="text-3xl font-black text-[#0b2136]">{dashboardStats.totalMissingOut}</p></div></div>
+                                    <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/60 flex items-center hover:shadow-md transition"><div className="p-3.5 rounded-2xl bg-rose-50 text-rose-600 mr-4 border border-rose-100"><IconWarning /></div><div><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Anomali</p><p className="text-3xl font-black text-[#0b2136]">{dashboardStats.totalAnomalies}</p></div></div>
+                                </div>
+
+                                {productivityStats && productivityStats.length > 0 && (
+                                    <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200/60 flex flex-col md:flex-row gap-10">
+                                        <div className="md:w-2/3">
+                                            <h3 className="text-xl font-black text-[#0b2136] mb-1">Kehadiran Aktual per Direktorat</h3>
+                                            <p className="text-xs text-slate-500 mb-8 border-b-2 border-slate-100 pb-5 font-bold">Cuti / Sakit otomatis dikecualikan dari perhitungan persentase.</p>
+                                            
+                                            <div className="flex items-end h-64 gap-4 overflow-x-auto pb-4 justify-start">
+                                                {productivityStats.map(stat => {
+                                                    const total = stat.headcount || 1;
+                                                    const h100 = (stat.buckets['76-100'].length / total) * 100;
+                                                    const h75 = (stat.buckets['51-75'].length / total) * 100;
+                                                    const h50 = (stat.buckets['26-50'].length / total) * 100;
+                                                    const h25 = (stat.buckets['0-25'].length / total) * 100;
+                                                    
+                                                    return (
+                                                        <div key={stat.dir} className="flex flex-col items-center w-16 min-w-[64px] shrink-0 group" onMouseEnter={() => setHoveredDir(stat)} onClick={() => setHoveredDir(stat)}>
+                                                            <div className="relative w-full flex flex-col justify-end h-48 bg-slate-50 rounded-t-xl overflow-hidden group-hover:ring-2 ring-teal-400 cursor-pointer shadow-inner border-x border-t border-slate-200">
+                                                                {h100 > 0 && <div style={{height: `${h100}%`}} className="w-full bg-[#10b981] transition-all border-b border-white/20"></div>}
+                                                                {h75 > 0 && <div style={{height: `${h75}%`}} className="w-full bg-[#0d9488] transition-all border-b border-white/20"></div>}
+                                                                {h50 > 0 && <div style={{height: `${h50}%`}} className="w-full bg-amber-400 transition-all border-b border-white/20"></div>}
+                                                                {h25 > 0 && <div style={{height: `${h25}%`}} className="w-full bg-rose-500 transition-all"></div>}
+                                                            </div>
+                                                            <div className="mt-3 text-[10px] font-black text-slate-600 text-center w-full px-1 truncate leading-tight" title={stat.dir}>{stat.dir}</div>
+                                                            <div className="text-[9px] text-slate-400 font-bold">{stat.headcount} Org</div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                            
+                                            <div className="mt-6 flex flex-wrap gap-5 text-[11px] font-black text-slate-500 border-t-2 border-slate-100 pt-6">
+                                                <div className="flex items-center"><span className="w-3.5 h-3.5 bg-[#10b981] rounded-md mr-2 shadow-sm"></span> Sangat Baik (76-100%)</div>
+                                                <div className="flex items-center"><span className="w-3.5 h-3.5 bg-[#0d9488] rounded-md mr-2 shadow-sm"></span> Cukup (51-75%)</div>
+                                                <div className="flex items-center"><span className="w-3.5 h-3.5 bg-amber-400 rounded-md mr-2 shadow-sm"></span> Buruk (26-50%)</div>
+                                                <div className="flex items-center"><span className="w-3.5 h-3.5 bg-rose-500 rounded-md mr-2 shadow-sm"></span> Kritis (0-25%)</div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="md:w-1/3 bg-[#f8fafc] rounded-[2rem] p-7 border border-slate-200 h-96 overflow-y-auto shadow-inner relative">
+                                            {hoveredDir ? (
+                                                <div className="flex flex-col">
+                                                    <h4 className="font-black text-[#0b2136] text-xl mb-1">{hoveredDir.dir}</h4>
+                                                    <p className="text-xs text-slate-500 mb-6 font-bold border-b-2 border-slate-200 pb-4">{hoveredDir.headcount} Karyawan Terdaftar</p>
+                                                    
+                                                    <div className="space-y-5">
+                                                        <div>
+                                                            <h5 className="text-[10px] font-black uppercase text-slate-400 mb-3 tracking-widest">Analisis Isu & Peristiwa</h5>
+                                                            <ul className="text-xs space-y-2.5 font-bold text-[#0b2136]">
+                                                                <li className="flex justify-between bg-white border border-slate-200 p-3 rounded-xl shadow-sm"><span>Total Hari Cuti:</span> <span className="text-[#0f766e]">{hoveredDir.issues.leaves}</span></li>
+                                                                <li className="flex justify-between bg-white border border-slate-200 p-3 rounded-xl shadow-sm"><span>Hari Bolos / Tidak Absen:</span> <span className="text-rose-600">{hoveredDir.issues.absents}</span></li>
+                                                                <li className="flex justify-between bg-white border border-slate-200 p-3 rounded-xl shadow-sm"><span>Lupa Absen Keluar (Out):</span> <span className="text-amber-600">{hoveredDir.issues.missingOut}</span></li>
+                                                            </ul>
+                                                        </div>
+                                                        {hoveredDir.buckets['0-25'].length > 0 && (
+                                                            <div className="pt-2">
+                                                                <h5 className="text-[10px] font-black uppercase text-rose-500 mb-3 tracking-widest">Peringatan Kritis (0-25%)</h5>
+                                                                <div className="bg-rose-50 rounded-xl p-4 border border-rose-100 max-h-32 overflow-y-auto">
+                                                                    <ul className="text-[11px] font-bold text-rose-800 space-y-2">
+                                                                        {hoveredDir.buckets['0-25'].map((emp, i) => <li key={i} className="flex items-center"><div className="w-1.5 h-1.5 rounded-full bg-rose-500 mr-2"></div> {emp.name}</li>)}
+                                                                    </ul>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="h-full flex flex-col items-center justify-center text-center text-slate-400">
+                                                    <div className="bg-white p-4 rounded-full shadow-sm mb-4 border border-slate-100">
+                                                        <svg className="w-8 h-8 text-[#0f766e]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"></path></svg>
+                                                    </div>
+                                                    <p className="text-[13px] font-bold px-4 leading-relaxed">Arahkan kursor ke diagram batang di samping untuk melihat rincian.</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* TAB: LAPORAN INDIVIDU */}
+                        {activeTab === 'report' && currentEmployeeData && (
+                            <div className="space-y-4">
+                                <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/60 flex flex-col sm:flex-row justify-between items-center gap-4 no-print">
+                                    <div className="flex items-center w-full sm:w-auto">
+                                        <label className="mr-4 text-[13px] font-black text-[#0b2136] uppercase tracking-wider">Pilih Karyawan:</label>
+                                        <select value={selectedEmployee} onChange={(e) => setSelectedEmployee(e.target.value)} className="w-full sm:w-80 border border-slate-300 bg-white rounded-xl p-3 font-bold text-[#0f766e] focus:border-[#0f766e] outline-none transition shadow-sm">
+                                            {processedData.map((emp, idx) => <option key={idx} value={emp.empKey}>{emp.name}</option>)}
+                                        </select>
+                                    </div>
+                                    <button onClick={() => downloadPDF('print-individu', `Report_${currentEmployeeData.name.replace(/\s+/g, '_')}`)} disabled={isGeneratingPDF} className={`${isGeneratingPDF ? 'bg-slate-400' : 'bg-[#0f766e] hover:bg-[#0d6059] hover:shadow-lg'} text-white px-6 py-3.5 rounded-xl font-black shadow-md flex items-center transition-all text-sm tracking-wide`}>
+                                        {isGeneratingPDF ? 'Menyiapkan PDF...' : <><IconPrint className="mr-2 w-4 h-4" /> Download / Cetak PDF</>}
+                                    </button>
+                                </div>
+
+                                <div id="print-individu" className="bg-white p-10 rounded-3xl shadow-sm border border-slate-200/60 print-container">
+                                    <div className="border-b-[4px] border-[#021326] pb-6 mb-8 flex justify-between items-end">
+                                        <div>
+                                            <h1 className="text-3xl font-black text-[#021326] tracking-tight">Laporan Individu</h1>
+                                            <p className="text-slate-500 font-bold text-[13px] mt-1.5">Data Gabungan Mesin, Manual, & Cuti</p>
+                                            <p className="text-[13px] font-black text-[#0f766e] mt-3">Periode: {getReportPeriodStr()}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-2xl font-black text-[#021326]">{currentEmployeeData.name}</p>
+                                            <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest mt-1.5">{currentEmployeeData.dept}</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Mini Summary Cards */}
+                                    <div className="grid grid-cols-4 gap-5 mb-10">
+                                        <div className="bg-slate-50 rounded-2xl p-5 border border-slate-200 shadow-sm border-l-[6px] border-l-[#021326]">
+                                            <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5">Kehadiran Aktual</p>
+                                            <p className="text-2xl font-black text-[#021326]">{currentEmployeeData.summary.totalDays} HARI</p>
+                                        </div>
+                                        <div className="bg-emerald-50 rounded-2xl p-5 border border-emerald-100 shadow-sm border-l-[6px] border-l-[#10b981]">
+                                            <p className="text-[10px] font-black uppercase text-[#0f766e] tracking-widest mb-1.5">Cuti / Izin Sah</p>
+                                            <p className="text-2xl font-black text-[#0f766e]">{currentEmployeeData.summary.leaveDays} HARI</p>
+                                        </div>
+                                        <div className="bg-rose-50 rounded-2xl p-5 border border-rose-100 shadow-sm border-l-[6px] border-l-rose-500">
+                                            <p className="text-[10px] font-black uppercase text-rose-500 tracking-widest mb-1.5">Lupa Absen Keluar</p>
+                                            <p className="text-2xl font-black text-rose-600">{currentEmployeeData.summary.missingOuts} KALI</p>
+                                        </div>
+                                        <div className="bg-amber-50 rounded-2xl p-5 border border-amber-100 shadow-sm border-l-[6px] border-l-amber-400">
+                                            <p className="text-[10px] font-black uppercase text-amber-600 tracking-widest mb-1.5">Aktivitas Ganda</p>
+                                            <p className="text-2xl font-black text-amber-600">{currentEmployeeData.summary.duplicates} KALI</p>
+                                        </div>
+                                    </div>
+
+                                    <table className="min-w-full border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                                        <thead className="bg-[#f8fafc] border-b-2 border-slate-200">
+                                            <tr>
+                                                <th className="px-6 py-4 text-left text-[11px] font-black text-[#0b2136] uppercase tracking-widest border-r border-slate-200">Tanggal</th>
+                                                <th className="px-6 py-4 text-center text-[11px] font-black text-[#0b2136] uppercase tracking-widest border-r border-slate-200">Jam Masuk (In)</th>
+                                                <th className="px-6 py-4 text-center text-[11px] font-black text-[#0b2136] uppercase tracking-widest border-r border-slate-200">Jam Keluar (Out)</th>
+                                                <th className="px-6 py-4 text-left text-[11px] font-black text-[#0b2136] uppercase tracking-widest">Keterangan / Sumber</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="bg-white divide-y divide-slate-100">
+                                            {currentEmployeeData.days.map((day, idx) => {
+                                                const isLeave = !!day.leaveType;
+                                                const isAbsent = !day.in && !day.out && !isLeave;
+                                                return (
+                                                    <tr key={idx} className={`${isLeave ? 'bg-emerald-50/40' : ''} ${day.missingOut || day.missingIn ? 'bg-rose-50/40' : ''} ${isAbsent ? 'bg-slate-50' : ''} hover:bg-slate-50 transition-colors`}>
+                                                        <td className="px-6 py-4 whitespace-nowrap text-[13px] font-bold text-[#0b2136] border-r border-slate-100">{formatDate(day.dateObj)}</td>
+                                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center border-r border-slate-100">
+                                                            {isLeave || isAbsent ? '-' : <span className="font-bold text-[#0b2136]">{formatTime(day.in)}</span>}
+                                                            {day.sourceIn === 'timesheet' && <span className="ml-2 px-1.5 py-0.5 bg-[#e0f2fe] text-[#0284c7] text-[10px] font-black rounded shadow-sm">TS</span>}
+                                                        </td>
+                                                        <td className={`px-6 py-4 whitespace-nowrap text-sm text-center border-r border-slate-100 ${day.missingOut ? 'text-rose-600 font-black' : ''}`}>
+                                                            {isLeave || isAbsent ? '-' : day.missingOut ? 'LUPA OUT' : <span className="font-bold text-[#0b2136]">{formatTime(day.out)}</span>}
+                                                            {day.sourceOut === 'timesheet' && <span className="ml-2 px-1.5 py-0.5 bg-[#e0f2fe] text-[#0284c7] text-[10px] font-black rounded shadow-sm">TS</span>}
+                                                        </td>
+                                                        <td className="px-6 py-4 text-xs font-bold">
+                                                            {isLeave && <span className="text-[#059669] uppercase tracking-wider flex items-center"><IconCheck className="w-4 h-4 mr-1.5"/> CUTI / SAKIT: {day.leaveType}</span>}
+                                                            {isAbsent && <span className="text-slate-400 font-semibold">- Tidak ada keterangan</span>}
+                                                            {day.missingOut && <span className="text-rose-500 block">- Lupa absen saat pulang</span>}
+                                                            {day.sourceIn === 'timesheet' || day.sourceOut === 'timesheet' ? <span className="text-[#0284c7] block">- Data ditambal manual dari Timesheet</span> : null}
+                                                            {day.rawInType && !/^(in|clock in|check in|masuk|clock-in|check-in)$/i.test(day.rawInType) && <span className="text-slate-500 block">- In: {day.rawInType}</span>}
+                                                            {day.rawOutType && !/^(out|clock out|check out|keluar|clock-out|check-out)$/i.test(day.rawOutType) && <span className="text-slate-500 block">- Out: {day.rawOutType}</span>}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* TAB: LAPORAN DIREKTORAT */}
+                        {activeTab === 'dir-report' && rawMasterData.length > 0 && selectedDirReport && (
+                            <div className="space-y-4">
+                                <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/60 flex flex-col sm:flex-row justify-between items-center gap-4 no-print">
+                                    <div className="flex items-center w-full sm:w-auto">
+                                        <label className="mr-4 text-[13px] font-black text-[#0b2136] uppercase tracking-wider">Pilih Direktorat:</label>
+                                        <select value={selectedDirReport} onChange={(e) => setSelectedDirReport(e.target.value)} className="w-full sm:w-80 border border-slate-300 bg-white rounded-xl p-3 font-bold text-[#0f766e] focus:border-[#0f766e] outline-none transition shadow-sm">
+                                            {Object.keys(directorateStats).sort().map((dir, idx) => <option key={idx} value={dir}>{dir}</option>)}
+                                        </select>
+                                    </div>
+                                    <button onClick={() => downloadPDF('print-direktorat', `Report_Direktorat_${selectedDirReport.replace(/\s+/g, '_')}`)} disabled={isGeneratingPDF} className={`${isGeneratingPDF ? 'bg-slate-400' : 'bg-[#0f766e] hover:bg-[#0d6059] hover:shadow-lg'} text-white px-6 py-3.5 rounded-xl font-black shadow-md flex items-center transition-all text-sm tracking-wide`}>
+                                        {isGeneratingPDF ? 'Membuat PDF...' : <><IconPrint className="mr-2 h-4 w-4" /> Cetak PDF (Summary + Individu)</>}
+                                    </button>
+                                </div>
+
+                                <div id="print-direktorat" className="print-container">
+                                    <div className="bg-white p-10 rounded-3xl shadow-sm border border-slate-200/60 mb-8 page-break html2pdf__page-break">
+                                        <div className="border-b-[4px] border-[#021326] pb-6 mb-8">
+                                            <h1 className="text-3xl font-black text-[#021326] tracking-tight">Laporan Eksekutif Direktorat</h1>
+                                            <p className="text-slate-500 font-bold text-[13px] mt-1.5">Analisis Kehadiran & Data Terpadu</p>
+                                        </div>
+                                        <div className="mb-8"><h2 className="text-2xl font-black text-[#0f766e] mb-1">{selectedDirReport}</h2></div>
+                                        <table className="min-w-full border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                                            <thead className="bg-[#f8fafc] border-b-2 border-slate-200">
+                                                <tr>
+                                                    <th className="px-6 py-4 text-left text-[11px] font-black text-[#0b2136] uppercase tracking-widest border-r border-slate-200">Nama Karyawan</th>
+                                                    <th className="px-6 py-4 text-center text-[11px] font-black text-[#0b2136] uppercase tracking-widest border-r border-slate-200">Kehadiran Aktual</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="bg-white divide-y divide-slate-100">
+                                                {processedData.filter(emp => emp.dept === selectedDirReport).map((emp, idx) => (
+                                                    <tr key={idx} className="hover:bg-slate-50">
+                                                        <td className="px-6 py-4 text-[13px] text-[#0b2136] font-bold border-r border-slate-100">{emp.name}</td>
+                                                        <td className="px-6 py-4 text-sm text-[#0f766e] font-black text-center border-r border-slate-100">{emp.summary.totalDays} HARI</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    
+                                    {processedData.filter(emp => emp.dept === selectedDirReport).map((empData, eIdx) => (
+                                        <div key={`print-emp-${eIdx}`} className="bg-white p-10 rounded-3xl shadow-sm border border-slate-200 mb-8 page-break html2pdf__page-break">
+                                            <div className="border-b-[3px] border-[#021326] pb-5 mb-8 flex justify-between items-end">
+                                                <div>
+                                                    <h1 className="text-2xl font-black text-[#021326]">Laporan Individu</h1>
+                                                    <p className="text-[13px] font-black text-[#0f766e] mt-1.5">Periode: {getReportPeriodStr()}</p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-xl font-black text-[#021326]">{empData.name}</p>
+                                                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-1">{empData.dept}</p>
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="grid grid-cols-4 gap-4 mb-6">
+                                                <div className="bg-slate-50 rounded-xl p-4 border border-slate-200"><p className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Kehadiran Aktual</p><p className="text-xl font-black text-[#021326] mt-1">{empData.summary.totalDays}</p></div>
+                                                <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100"><p className="text-[9px] font-black uppercase text-[#0f766e] tracking-wider">Cuti/Izin</p><p className="text-xl font-black text-[#0f766e] mt-1">{empData.summary.leaveDays}</p></div>
+                                                <div className="bg-rose-50 rounded-xl p-4 border border-rose-100"><p className="text-[9px] font-black uppercase text-rose-500 tracking-wider">Lupa Out</p><p className="text-xl font-black text-rose-600 mt-1">{empData.summary.missingOuts}</p></div>
+                                                <div className="bg-amber-50 rounded-xl p-4 border border-amber-100"><p className="text-[9px] font-black uppercase text-amber-600 tracking-wider">Aktivitas Ganda</p><p className="text-xl font-black text-amber-600 mt-1">{empData.summary.duplicates}</p></div>
+                                            </div>
+
+                                            <table className="min-w-full border border-slate-200 rounded-lg overflow-hidden">
+                                                <thead className="bg-[#f8fafc] border-b-2 border-slate-200">
+                                                    <tr>
+                                                        <th className="px-4 py-3 text-left text-[10px] font-black text-[#0b2136] uppercase tracking-wider border-r border-slate-200">Tanggal</th>
+                                                        <th className="px-4 py-3 text-center text-[10px] font-black text-[#0b2136] uppercase tracking-wider border-r border-slate-200">Masuk (In)</th>
+                                                        <th className="px-4 py-3 text-center text-[10px] font-black text-[#0b2136] uppercase tracking-wider border-r border-slate-200">Keluar (Out)</th>
+                                                        <th className="px-4 py-3 text-left text-[10px] font-black text-[#0b2136] uppercase tracking-wider">Keterangan</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100 text-xs font-bold">
+                                                    {empData.days.map((day, idx) => {
+                                                        const isLeave = !!day.leaveType;
+                                                        const isAbsent = !day.in && !day.out && !isLeave;
+                                                        return (
+                                                            <tr key={idx} className={`${isLeave ? 'bg-emerald-50/30' : ''} ${day.missingOut ? 'bg-rose-50/30' : ''} ${isAbsent ? 'text-slate-400 bg-slate-50/50' : 'text-[#0b2136]'}`}>
+                                                                <td className="px-4 py-3 border-r border-slate-100">{formatDate(day.dateObj)}</td>
+                                                                <td className="px-4 py-3 text-center border-r border-slate-100">{isLeave || isAbsent ? '-' : formatTime(day.in)} {day.sourceIn === 'timesheet' && '(TS)'}</td>
+                                                                <td className={`px-4 py-3 text-center border-r border-slate-100 ${day.missingOut ? 'text-rose-600 font-black' : ''}`}>{isLeave || isAbsent ? '-' : day.missingOut ? 'LUPA OUT' : formatTime(day.out)} {day.sourceOut === 'timesheet' && '(TS)'}</td>
+                                                                <td className="px-4 py-3 text-[10px]">
+                                                                    {isLeave && <span className="text-[#059669]">CUTI: {day.leaveType}</span>}
+                                                                    {isAbsent && <span className="font-semibold">- Tidak ada keterangan</span>}
+                                                                    {day.missingOut && <span className="text-rose-500">- Lupa absen pulang</span>}
+                                                                    {(day.sourceIn === 'timesheet' || day.sourceOut === 'timesheet') && <span className="text-[#0284c7]">- Ditambal Timesheet</span>}
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        
+                        {/* TAB: TIDAK HADIR */}
+                        {activeTab === 'absent' && rawMasterData.length > 0 && (
+                            <div className="space-y-6">
+                                <div className="bg-white p-8 md:p-10 rounded-3xl shadow-sm border border-slate-200/60">
+                                    <div className="border-b-[4px] border-[#021326] pb-5 mb-8">
+                                        <h1 className="text-2xl md:text-3xl font-black text-[#021326] tracking-tight">Laporan Tidak Hadir Harian</h1>
+                                        <p className="text-[13px] text-slate-500 font-bold mt-2">Daftar Karyawan di Master Database yang tidak memiliki rekam jejak mesin/timesheet dan tidak sedang cuti.</p>
+                                    </div>
+                                    
+                                    <div className="flex flex-col sm:flex-row items-start sm:items-center mb-8 bg-[#f8fafc] p-5 rounded-2xl border border-slate-200 shadow-inner">
+                                        <label className="mr-4 text-[13px] font-black text-[#0b2136] uppercase tracking-wider mb-2 sm:mb-0">Pilih Tanggal Laporan:</label>
+                                        <select value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="w-full sm:w-64 border border-slate-300 bg-white rounded-xl p-3 font-bold text-[#0f766e] focus:ring-0 outline-none focus:border-[#0f766e] shadow-sm">
+                                            {Array.from(new Set(targetDates || [])).sort().reverse().map((dateStr, idx) => (
+                                                <option key={idx} value={dateStr}>{new Date(dateStr).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' })}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                        {absenteeStatsByDept.map((deptStat, idx) => (
+                                            <div key={idx} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition">
+                                                <div className="bg-[#f8fafc] px-5 py-4 border-b border-slate-200">
+                                                    <h3 className="font-black text-[#0b2136] text-[15px] truncate" title={deptStat.dept}>{deptStat.dept}</h3>
+                                                    <div className="flex justify-between items-center mt-2">
+                                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TIDAK HADIR: <span className="text-rose-600 text-[13px] ml-1">{deptStat.count}</span></span>
+                                                        <span className="text-[10px] font-bold text-slate-500 bg-slate-200 px-2 py-0.5 rounded-md">Total: {deptStat.totalEmployees} Org</span>
+                                                    </div>
+                                                </div>
+                                                <ul className="divide-y divide-slate-100 max-h-56 overflow-y-auto">
+                                                    {deptStat.employees.map((emp, empIdx) => (
+                                                        <li key={empIdx} className="px-5 py-3.5 text-[12px] font-bold text-[#0b2136] hover:bg-slate-50 flex items-center transition-colors">
+                                                            <div className="w-2 h-2 rounded-full bg-rose-400 mr-3 shadow-sm"></div> {emp.name}
+                                                        </li>
+                                                    ))}
+                                                    {deptStat.count === 0 && (
+                                                        <li className="px-5 py-8 text-xs text-center text-[#0f766e] font-black bg-emerald-50/50">Lengkap! Semua Hadir/Cuti.</li>
+                                                    )}
+                                                </ul>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        
+                        {/* TAB: ANOMALI */}
+                        {activeTab === 'anomalies' && dashboardStats && (
+                            <div className="bg-white rounded-3xl shadow-sm border border-slate-200/60 overflow-hidden">
+                                <div className="px-8 py-6 border-b border-slate-200 bg-[#f8fafc]">
+                                    <h3 className="font-black text-[#021326] text-2xl tracking-tight">Catatan Anomali</h3>
+                                    <p className="text-xs text-slate-500 font-bold mt-1.5">Daftar absensi ganda atau lupa check-out.</p>
+                                </div>
+                                <div className="p-0 overflow-x-auto">
+                                    <table className="min-w-full">
+                                        <thead className="bg-white border-b-2 border-slate-200">
+                                            <tr>
+                                                <th className="px-8 py-4 text-left text-[11px] font-black text-slate-400 uppercase tracking-widest">Tanggal</th>
+                                                <th className="px-8 py-4 text-left text-[11px] font-black text-slate-400 uppercase tracking-widest">Karyawan</th>
+                                                <th className="px-8 py-4 text-left text-[11px] font-black text-slate-400 uppercase tracking-widest">Isu / Anomali</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 bg-white">
+                                            {dashboardStats.anomaliesList.map((anom, idx) => (
+                                                <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                                                    <td className="px-8 py-5 whitespace-nowrap text-[13px] font-bold text-[#0b2136]">{formatDate(anom.date)}</td>
+                                                    <td className="px-8 py-5 whitespace-nowrap">
+                                                        <p className="text-[14px] font-black text-[#0b2136]">{anom.name}</p>
+                                                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-0.5">{anom.dept}</p>
+                                                    </td>
+                                                    <td className="px-8 py-5 text-xs font-bold">
+                                                        {anom.missingOut && <span className="inline-flex items-center px-3 py-1.5 rounded-lg text-amber-700 bg-amber-50 mr-2 mb-2 border border-amber-200 shadow-sm"><IconWarning className="w-3.5 h-3.5 mr-1.5"/> Lupa Absen Keluar</span>}
+                                                        {anom.missingIn && <span className="inline-flex items-center px-3 py-1.5 rounded-lg text-rose-700 bg-rose-50 mr-2 mb-2 border border-rose-200 shadow-sm"><IconWarning className="w-3.5 h-3.5 mr-1.5"/> Lupa Absen Masuk</span>}
+                                                        {anom.isDuplicate && <span className="inline-flex items-center px-3 py-1.5 rounded-lg text-[#0f766e] bg-teal-50 mr-2 mb-2 border border-teal-200 shadow-sm"><IconAlert className="w-3.5 h-3.5 mr-1.5"/> Aktivitas In/Out Ganda</span>}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                            {dashboardStats.anomaliesList.length === 0 && (
+                                                <tr><td colSpan="3" className="px-8 py-16 text-center text-sm font-bold text-slate-400">Tidak ada anomali yang ditemukan.</td></tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+                    </main>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
