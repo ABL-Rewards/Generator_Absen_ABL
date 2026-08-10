@@ -1456,11 +1456,23 @@
                                                     </div>
                                                 </div>
                                                 <ul className="divide-y divide-slate-100 max-h-56 overflow-y-auto">
-                                                    {deptStat.employees.map((emp, empIdx) => (
-                                                        <li key={empIdx} className="px-5 py-3.5 text-[12px] font-bold text-[#0b2136] hover:bg-slate-50 flex items-center transition-colors">
-                                                            <div className="w-2 h-2 rounded-full bg-[#fbcfe8] border border-rose-400 mr-3 shadow-sm"></div> {emp.name}
-                                                        </li>
-                                                    ))}
+                                                    {deptStat.employees.map((emp, empIdx) => {
+                                                        // Cari data rekap bolos karyawan ini di keseluruhan periode
+                                                        const empProcessedData = processedData.find(p => p.name === emp.name);
+                                                        const totalBolos = empProcessedData ? empProcessedData.summary.unplannedAbsences : 0;
+                                                        
+                                                        return (
+                                                            <li key={empIdx} className="px-5 py-3.5 text-[12px] font-bold text-[#0b2136] hover:bg-slate-50 flex items-center justify-between transition-colors">
+                                                                <div className="flex items-center">
+                                                                    <div className="w-2 h-2 rounded-full bg-[#fbcfe8] border border-rose-400 mr-3 shadow-sm shrink-0"></div> 
+                                                                    <span className="truncate">{emp.name}</span>
+                                                                </div>
+                                                                <span className="ml-2 shrink-0 bg-rose-100 text-rose-700 text-[10px] font-black px-2 py-0.5 rounded-md whitespace-nowrap">
+                                                                    {totalBolos} Hari
+                                                                </span>
+                                                            </li>
+                                                        );
+                                                    })}
                                                     {deptStat.count === 0 && (
                                                         <li className="px-5 py-8 text-xs text-center text-[#0d9488] font-black bg-emerald-50/50">Lengkap! Semua Hadir/Cuti.</li>
                                                     )}
