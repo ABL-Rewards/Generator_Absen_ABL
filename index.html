@@ -310,12 +310,15 @@
                 if (!element) return;
                 
                 setIsGeneratingPDF(true);
+                
+                // OPTIMASI UNTUK FILE BERAT (>30 LEMBAR)
                 const opt = {
-                    margin:       10,
+                    margin:       [10, 10, 10, 10],
                     filename:     `${fileName}.pdf`,
-                    image:        { type: 'jpeg', quality: 0.98 },
-                    html2canvas:  { scale: 2, useCORS: true, logging: false },
-                    jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                    image:        { type: 'jpeg', quality: 0.90 }, // Kualitas dioptimasi agar RAM tidak bocor
+                    pagebreak:    { mode: ['css', 'legacy'] }, // Paksa pemotongan per halaman (mencegah crash kanvas panjang)
+                    html2canvas:  { scale: 1.5, useCORS: true, logging: false }, // Menurunkan skala dari 2 ke 1.5 memangkas beban memori drastis
+                    jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true } // Kompresi file diaktifkan
                 };
                 
                 html2pdf().set(opt).from(element).save().then(() => {
@@ -323,6 +326,8 @@
                 }).catch(err => {
                     console.error("PDF generation error:", err);
                     setIsGeneratingPDF(false);
+                    // Fallback Pintar jika RAM PC user masih tidak kuat
+                    alert("Gagal membuat PDF. Jika data yang ditarik terlalu besar (>50 lembar), sistem menyarankan Anda menggunakan fitur cetak bawaan. \n\nSilakan tekan tombol Ctrl + P (atau Cmd + P di Mac) pada keyboard Anda, lalu ubah tujuan/printer menjadi 'Save as PDF'.");
                 });
             };
 
